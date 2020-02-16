@@ -1,0 +1,182 @@
+diff --git a/Makefile b/Makefile
+index d80f6d6f1e34..b9426d8cc2ff 100644
+--- a/Makefile
++++ b/Makefile
+@@ -963,8 +963,7 @@ endif
+ 
+ 
+ ifeq ($(KBUILD_EXTMOD),)
+-core-y		+= kernel/ certs/ mm/ fs/ ipc/ security/ crypto/ block/
+-
++core-y		+= kernel/ certs/ mm/ fs/ ipc/ security/ crypto/ block/ newcall/ get_tag/ set_tag/ get_class/ set_class/
+ vmlinux-dirs	:= $(patsubst %/,%,$(filter %/, $(init-y) $(init-m) \
+ 		     $(core-y) $(core-m) $(drivers-y) $(drivers-m) \
+ 		     $(net-y) $(net-m) $(libs-y) $(libs-m) $(virt-y)))
+diff --git a/arch/x86/entry/syscalls/syscall_32.tbl b/arch/x86/entry/syscalls/syscall_32.tbl
+index 3cf7b533b3d1..e512f76f0cde 100644
+--- a/arch/x86/entry/syscalls/syscall_32.tbl
++++ b/arch/x86/entry/syscalls/syscall_32.tbl
+@@ -398,3 +398,8 @@
+ 384	i386	arch_prctl		sys_arch_prctl			__ia32_compat_sys_arch_prctl
+ 385	i386	io_pgetevents		sys_io_pgetevents		__ia32_compat_sys_io_pgetevents
+ 386	i386	rseq			sys_rseq			__ia32_sys_rseq
++387	i386	newcall			sys_newcall			__ia32_sys_newcall
++388	i386	get_tag			sys_get_tag			__ia32_sys_get_tag
++389	i386	set_tag			sys_set_tag			__ia32_sys_set_tag
++390	i386	get_class		sys_get_class			__ia32_sys_get_class
++391	i386	set_class		sys_set_class			__ia32_sys_set_class
+diff --git a/arch/x86/entry/syscalls/syscall_64.tbl b/arch/x86/entry/syscalls/syscall_64.tbl
+index f0b1709a5ffb..4ad1e5ef036f 100644
+--- a/arch/x86/entry/syscalls/syscall_64.tbl
++++ b/arch/x86/entry/syscalls/syscall_64.tbl
+@@ -343,6 +343,11 @@
+ 332	common	statx			__x64_sys_statx
+ 333	common	io_pgetevents		__x64_sys_io_pgetevents
+ 334	common	rseq			__x64_sys_rseq
++335	64	newcall			__x64_sys_newcall
++336	64	get_tag			__x64_sys_get_tag
++337	64	set_tag			__x64_sys_set_tag
++338	64	get_class		__x64_sys_get_class
++339	64	set_class		__x64_sys_set_class
+ 
+ #
+ # x32-specific system call numbers start at 512 to avoid cache impact
+diff --git a/fs/inode.c b/fs/inode.c
+index 7a5123292be8..914a086fce54 100644
+--- a/fs/inode.c
++++ b/fs/inode.c
+@@ -19,6 +19,7 @@
+ #include <linux/ratelimit.h>
+ #include <linux/list_lru.h>
+ #include <linux/iversion.h>
++#include <linux/sched.h>
+ #include <trace/events/writeback.h>
+ #include "internal.h"
+ 
+@@ -158,6 +159,7 @@ int inode_init_always(struct super_block *sb, struct inode *inode)
+ 	inode->i_dir_seq = 0;
+ 	inode->i_rdev = 0;
+ 	inode->dirtied_when = 0;
++	inode->classification = current->tag;
+ 
+ #ifdef CONFIG_CGROUP_WRITEBACK
+ 	inode->i_wb_frn_winner = 0;
+diff --git a/include/linux/fs.h b/include/linux/fs.h
+index a5fdf91e0ec3..1d64c0b430ec 100644
+--- a/include/linux/fs.h
++++ b/include/linux/fs.h
+@@ -575,6 +575,7 @@ struct inode {
+ 	kuid_t			i_uid;
+ 	kgid_t			i_gid;
+ 	unsigned int		i_flags;
++	int			classification;
+ 
+ #ifdef CONFIG_FS_POSIX_ACL
+ 	struct posix_acl	*i_acl;
+diff --git a/include/linux/sched.h b/include/linux/sched.h
+index a6c699f5ceb4..5c8383167f78 100644
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
+@@ -1183,7 +1183,7 @@ struct task_struct {
+ 	/* Used by LSM modules for access restriction: */
+ 	void				*security;
+ #endif
+-
++	int				tag;
+ 	/*
+ 	 * New fields for task_struct should be added above here, so that
+ 	 * they are included in the randomized portion of task_struct.
+diff --git a/include/linux/syscalls.h b/include/linux/syscalls.h
+index 5c1a0933768e..311855043612 100644
+--- a/include/linux/syscalls.h
++++ b/include/linux/syscalls.h
+@@ -1282,4 +1282,14 @@ static inline long ksys_truncate(const char __user *pathname, loff_t length)
+ 	return do_sys_truncate(pathname, length);
+ }
+ 
++asmlinkage long sys_newcall(void);
++
++asmlinkage long sys_get_tag(int);
++
++asmlinkage long sys_set_tag(int, int);
++
++asmlinkage long sys_get_class(int);
++
++asmlinkage long sys_set_class(int, int);
++
+ #endif
+diff --git a/include/uapi/asm-generic/unistd.h b/include/uapi/asm-generic/unistd.h
+index 42990676a55e..98aa49d57ba6 100644
+--- a/include/uapi/asm-generic/unistd.h
++++ b/include/uapi/asm-generic/unistd.h
+@@ -734,9 +734,19 @@ __SYSCALL(__NR_pkey_free,     sys_pkey_free)
+ __SYSCALL(__NR_statx,     sys_statx)
+ #define __NR_io_pgetevents 292
+ __SC_COMP(__NR_io_pgetevents, sys_io_pgetevents, compat_sys_io_pgetevents)
++#define __NR_newcall 293
++__SYSCALL(__NR_newcall, sys_newcall)
++#define __NR_get_tag 294
++__SYSCALL(__NR_get_tag, sys_get_tag)
++#define __NR_set_tag 295
++__SYSCALL(__NR_set_tag, sys_set_tag)
++#define __NR_get_class 296
++__SYSCALL(__NR_get_class, sys_get_class)
++#define __NR_set_class 297
++__SYSCALL(__NR_set_class, sys_set_class)
+ 
+ #undef __NR_syscalls
+-#define __NR_syscalls 293
++#define __NR_syscalls 298
+ 
+ /*
+  * 32 bit systems traditionally used different
+diff --git a/init/init_task.c b/init/init_task.c
+index 74f60baa2799..dce0132b3e20 100644
+--- a/init/init_task.c
++++ b/init/init_task.c
+@@ -56,6 +56,7 @@ struct task_struct init_task
+ 	.thread_info	= INIT_THREAD_INFO(init_task),
+ 	.stack_refcount	= ATOMIC_INIT(1),
+ #endif
++	.tag		=0,
+ 	.state		= 0,
+ 	.stack		= init_stack,
+ 	.usage		= ATOMIC_INIT(2),
+diff --git a/init/main.c b/init/main.c
+index 5e13c544bbf4..b28493ec277f 100644
+--- a/init/main.c
++++ b/init/main.c
+@@ -549,6 +549,7 @@ asmlinkage __visible void __init start_kernel(void)
+ 	boot_cpu_init();
+ 	page_address_init();
+ 	pr_notice("%s", linux_banner);
++        printk("TIFFANYS STARTUP MESSAGE: HI PROFESSOR NEMO!");
+ 	setup_arch(&command_line);
+ 	/*
+ 	 * Set up the the initial canary and entropy after arch
+diff --git a/kernel/fork.c b/kernel/fork.c
+index c21b4e1f29f8..e079fd25d968 100644
+--- a/kernel/fork.c
++++ b/kernel/fork.c
+@@ -1880,6 +1880,7 @@ static __latent_entropy struct task_struct *copy_process(
+ 
+ 	/* ok, now we should be set up.. */
+ 	p->pid = pid_nr(pid);
++	p->tag = 0;
+ 	if (clone_flags & CLONE_THREAD) {
+ 		p->exit_signal = -1;
+ 		p->group_leader = current->group_leader;
+diff --git a/kernel/sys_ni.c b/kernel/sys_ni.c
+index df556175be50..b91a997bab70 100644
+--- a/kernel/sys_ni.c
++++ b/kernel/sys_ni.c
+@@ -435,3 +435,9 @@ COND_SYSCALL(setuid16);
+ 
+ /* restartable sequence */
+ COND_SYSCALL(rseq);
++
++COND_SYSCALL(newcall);
++COND_SYSCALL(get_tag);
++COND_SYSCALL(set_tag);
++COND_SYSCALL(get_class);
++COND_SYSCALL(set_class);

@@ -1,0 +1,28 @@
+
+.TH SET_CLASS "1" "March 2019" "set_class" "New System Calls"
+.SH NAME
+set_class \- set the classification field of a file
+.SH SYNOPSIS
+#include <linux/syscalls.h>
+#include <linux/kernel.h>
+#include <linux/sched.h>
+#include <linux/types.h>
+#include <linux/cred.h>
+#include <linux/file.h>
+#include <asm/unistd.h>
+#include <linux/fs.h>
+#include <linux/highuid.h>
+
+.B set_class(int FILE*, int newvalue);
+
+.SH DESCRIPTION
+set_class will set the class of a given file
+
+set_class can be called by any root process. It will assign a classification field to any file created and it will initialize classification to the tag value of the calling process.
+
+.SH ERRORS
+
+There are no known errors.
+
+.SH "SEE ALSO"
+get_class

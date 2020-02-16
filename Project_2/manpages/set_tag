@@ -1,0 +1,23 @@
+.TH SET_TAG "1" "February 2019" "set_tag" "New System Calls"
+.SH NAME
+set_tag \- set the tag of a process
+.SH SYNOPSIS
+ #include <linux/syscalls.h>
+ #include <linux/kernel.h>
+ #include <linux/sched.h>
+ #include <linux/types.h>
+ #include <linux/cred.h>
+
+.B set_tag(int PID, int newvalue);
+
+.SH DESCRIPTION
+set_tag will set the tag of a given process
+
+set_tag can be called by any root process using any PID that belongs to a live process.
+
+.SH ERRORS
+
+There are no known errors.
+
+.SH "SEE ALSO"
+get_tag

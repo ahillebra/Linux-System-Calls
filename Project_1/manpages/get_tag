@@ -1,0 +1,24 @@
+.TH GET_TAG "1" "February 2019" "get_tag" "New System Calls"
+.SH NAME
+get_tag \- retrieve the tag of a process
+.SH SYNOPSIS
+ #include <linux/syscalls.h>
+ #include <linux/kernel.h>
+ #include <linux/sched.h>
+ #include <linux/types.h>
+ #include <linux/cred.h>
+
+.B get_tag(int PID);
+
+.SH DESCRIPTION
+get_tag will retrieve the current tag of a given process as given to it initally or set by set_tag.
+
+get_tag can be called by any root process or by a process to retrieve its own tag.
+
+.SH ERRORS
+
+There are no known errors.
+
+.SH "SEE ALSO"
+set_tag
+
